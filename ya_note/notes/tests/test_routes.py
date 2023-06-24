@@ -1,12 +1,11 @@
 from http import HTTPStatus
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, Client
 from django.urls import reverse
 
 from notes.models import Note
 
-# Получаем модель пользователя.
 User = get_user_model()
 
 
@@ -14,9 +13,14 @@ class TestRoutes(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        # Создаём двух пользователей (автора и читателя).
+        # Создаём двух авторизируемых пользователей(автора и читателя).
         cls.author = User.objects.create(username='Автор')
+        cls.author_client = Client()
+        cls.author_client.force_login(cls.author)
         cls.reader = User.objects.create(username='Читатель')
+        cls.reader_client = Client()
+        cls.reader_client.force_login(cls.reader)
+
         # Создаём запись заметки.
         cls.note = Note.objects.create(
             author=cls.author,
@@ -24,75 +28,59 @@ class TestRoutes(TestCase):
             text='Текст',
             slug='slogan1',
         )
+        # Адреса тестируемых страницы.
+        cls.login_url = reverse('users:login')
+        cls.logout_url = reverse('users:logout')
+        cls.signup_url = reverse('users:signup')
+        cls.home_url = reverse('notes:home')
+        cls.list_url = reverse('notes:list')
+        cls.add_url = reverse('notes:add')
+        cls.success_url = reverse('notes:success')
+        cls.edit_url = reverse('notes:edit', args=(cls.note.slug,))
+        cls.delete_url = reverse('notes:delete', args=(cls.note.slug,))
 
     def test_pages_availability_not_login_user(self):
         """Тест на доступность страниц анономным пользователям."""
-        # Создаём набор тестовых данных - имя пути.
         urls = (
-            'notes:home',
-            'users:login',
-            'users:logout',
-            'users:signup',
+            self.home_url,
+            self.login_url,
+            self.logout_url,
+            self.signup_url,
         )
-        # Итерируемся по кортежу.
-        for name in urls:
-            with self.subTest(name=name):
-                # Передаём имя и позиционный аргумент в reverse()
-                # и получаем адрес страницы для GET-запроса:
-                url = reverse(name, None)
+        for url in urls:
+            with self.subTest(url=url):
                 response = self.client.get(url)
                 self.assertEqual(response.status_code, HTTPStatus.OK)
 
     def test_pages_availability_login_user(self):
         """Тест на доступность страниц зарегистрированным пользователям."""
-        # Создаём набор тестовых данных - имя пути и позиционные аргументы.
         urls = (
-            'notes:list',
-            'notes:success',
-            'notes:add',
+            self.list_url,
+            self.success_url,
+            self.add_url,
         )
-        # Логиним пользователя в клиенте:
-        self.client.force_login(self.author)
-        # Итерируемся по внешнему кортежу.
-        # и распаковываем содержимое вложенных кортежей:
-        for name in urls:
-            with self.subTest(self.author, name=name):
-                # Передаём имя и позиционный аргумент в reverse()
-                # и получаем адрес страницы для GET-запроса:
-                url = reverse(name, None)
-                response = self.client.get(url)
+        for url in urls:
+            with self.subTest(url=url):
+                response = self.reader_client.get(url)
                 self.assertEqual(response.status_code, HTTPStatus.OK)
 
     def test_availability_for_notes_edit_and_delete(self):
         """Тест на доступность удаления/изменения записи автору/читателю."""
-        users_statuses = (
-            (self.author, HTTPStatus.OK),
-            (self.reader, HTTPStatus.NOT_FOUND),
+        users_statuses_urls = (
+            (self.author_client, HTTPStatus.OK, self.edit_url),
+            (self.author_client, HTTPStatus.OK, self.delete_url),
+            (self.reader_client, HTTPStatus.NOT_FOUND, self.edit_url),
+            (self.reader_client, HTTPStatus.NOT_FOUND, self.delete_url),
         )
-        for user, status in users_statuses:
-            # Логиним пользователя в клиенте:
-            self.client.force_login(user)
-            # Для каждой пары "пользователь - ожидаемый ответ"
-            # перебираем имена тестируемых страниц:
-            for name in ('notes:edit', 'notes:delete'):
-                with self.subTest(user=user, name=name):
-                    url = reverse(name, args=(self.note.slug,))
-                    response = self.client.get(url)
-                    self.assertEqual(response.status_code, status)
+        for user, status, url in users_statuses_urls:
+            with self.subTest(user=user, url=url, status=status):
+                response = user.get(url)
+                self.assertEqual(response.status_code, status)
 
     def test_redirect_for_anonymous_client(self):
         """Тест на редирект анонимным пользователям."""
-        # Сохраняем адрес страницы логина:
-        login_url = reverse('users:login')
-        # В цикле перебираем имена страниц, с которых ожидаем редирект:
-        for name in ('notes:edit', 'notes:delete'):
-            with self.subTest(name=name):
-                # Получаем адрес страницы редактирования/удаления комментария:
-                url = reverse(name, args=(self.note.slug,))
-                # Получаем ожидаемый адрес страницы логина,
-                # Учитываем, что в адресе будет параметр next
-                # - адрес страницы, с которой пользователь был переадресован.
-                redirect_url = f'{login_url}?next={url}'
+        for url in (self.edit_url, self.delete_url):
+            with self.subTest(url=url):
+                redirect_url = f'{self.login_url}?next={url}'
                 response = self.client.get(url)
-                # Проверяем, что редирект приведёт именно на указанную ссылку.
                 self.assertRedirects(response, redirect_url)

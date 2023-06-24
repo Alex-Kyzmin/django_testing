@@ -1,107 +1,94 @@
 from http import HTTPStatus
 
 import pytest
-from django.urls import reverse
 from pytest_django.asserts import assertRedirects, assertFormError
 
 from news.forms import BAD_WORDS, WARNING
 from news.models import Comment
+from news.pytest_tests.conftest import TEXT_COMMENT
 
 
 @pytest.mark.django_db
-def test_anonymous_cant_create_comment(client, new, form_data):
+def test_anonymous_cant_create_comment(client, form_data, detail_url):
     """Тестируем невозможность создания комментария анониму."""
-    detail_url = reverse('news:detail', args=(new.id,))
-    # Совершаем POST-запрос от анонима c формой текста комментария.
+    comments_count = Comment.objects.count()
+    assert comments_count == 0
     client.post(detail_url, data=form_data)
-    # Считаем количество комментариев.
     comments_count = Comment.objects.count()
-    # Ожидаем, что комментариев в базе нет - сравниваем с нулём.
     assert comments_count == 0
 
 
-def test_author_create_comment(author_client, new, form_data):
+def test_author_create_comment(
+        author_client, form_data, detail_url, author, new,
+):
     """Тестируем возможность создания комментария автору."""
-    detail_url = reverse('news:detail', args=(new.id,))
-    # Совершаем POST-запрос от атора c формой текста комментария.
+    comments_count = Comment.objects.count()
+    assert comments_count == 0
     response = author_client.post(detail_url, data=form_data)
-    # Проверяем, что редирект привёл к разделу с комментами.
     assertRedirects(response, f'{detail_url}#comments')
-    # Считаем количество комментариев.
     comments_count = Comment.objects.count()
-    # Убеждаемся, что есть один комментарий.
     assert comments_count == 1
-    # Получаем объект комментария из базы.
     comment = Comment.objects.get()
-    # Проверяем, что текст комментария совпадают с ожидаемым.
     assert comment.text == form_data['text']
+    assert comment.author == author
+    assert comment.news == new
 
 
-def test_author_delete_comment(author_client, comment, new):
+def test_author_delete_comment(author_client, delete_url, detail_url):
     """Тестируем возможность удаления комментария автору."""
-    delete_url = reverse('news:delete', args=(comment.id,))
-    new_url = reverse('news:detail', args=(new.id,))
-    # От автора комментария отправляем DELETE-запрос на удаление.
-    response = author_client.delete(delete_url)
-    # Проверяем, что редирект привёл к разделу с комментариями.
-    # Заодно проверим статус-коды ответов.
-    assertRedirects(response, new_url + '#comments')
-    # Считаем количество комментариев в системе.
     comments_count = Comment.objects.count()
-    # Ожидаем ноль комментариев в системе.
+    assert comments_count == 1
+    response = author_client.delete(delete_url)
+    assertRedirects(response, detail_url + '#comments')
+    comments_count = Comment.objects.count()
     assert comments_count == 0
 
 
-def test_author_edit_comment(author_client, comment, form_data, new):
+def test_author_edit_comment(
+        author_client, comment, new, author,
+        form_data, edit_url, detail_url,
+):
     """Тестируем возможность редактирования комментария автору."""
-    edit_url = reverse('news:edit', args=(comment.id,))
-    new_url = reverse('news:detail', args=(new.id,))
-    # Выполняем POST-запрос на редактирование от автора комментария.
     response = author_client.post(edit_url, data=form_data)
-    # Проверяем, что сработал редирект.
-    assertRedirects(response, new_url + '#comments')
-    # Обновляем объект комментария.
+    assertRedirects(response, detail_url + '#comments')
     comment.refresh_from_db()
-    # Проверяем, что текст комментария соответствует обновленному.
     assert comment.text == form_data['text']
+    assert comment.author == author
+    assert comment.news == new
 
 
-def test_author_cant_use_bad_words(author_client, new):
+def test_author_cant_use_bad_words(author_client, detail_url):
     """Тестируем невозможность создания комментария со стоп-словами."""
-    detail_url = reverse('news:detail', args=(new.id,))
-    # Формируем данные для отправки включая стоп-слова.
+    comments_count = Comment.objects.count()
+    assert comments_count == 0
     bad_words_data = {
         'text': f'Какой-то текст, {BAD_WORDS[0]}, еще текст',
     }
-    # Отправляем запрос через авторизованный клиент.
     response = author_client.post(detail_url, data=bad_words_data)
-    # Проверяем, есть ли в ответе ошибка формы.
     assertFormError(response, form='form', field='text', errors=WARNING)
-    # Дополнительно убедимся, что комментарий не был создан.
     comments_count = Comment.objects.count()
     assert comments_count == 0
 
 
-def test_reader_cant_delete_comment_of_author(reader_client, comment):
+def test_reader_cant_delete_comment_of_author(
+        reader_client, delete_url, author, comment,
+):
     """Тестируем невозможность удаления комментария читателем."""
-    delete_url = reverse('news:delete', args=(comment.id,))
-    # Выполняем запрос на удаление от читателя.
-    response = reader_client.delete(delete_url)
-    # Проверяем, что вернулась 404 ошибка.
-    assert response.status_code, HTTPStatus.NOT_FOUND
-    # Убедимся, что комментарий не удален.
     comments_count = Comment.objects.count()
     assert comments_count == 1
+    response = reader_client.delete(delete_url)
+    assert response.status_code, HTTPStatus.NOT_FOUND
+    comments_count = Comment.objects.count()
+    assert comments_count == 1
+    assert comment.author == author
+    assert comment.text == TEXT_COMMENT
 
 
-def test_reader_cant_edite_comment(reader_client, comment, form_data):
+def test_reader_cant_edite_comment(
+        reader_client, comment, form_data, edit_url
+):
     """Тестируем невозможность редактирования комментария читателем."""
-    edit_url = reverse('news:edit', args=(comment.id,))
-    # Выполняем запрос на редактирование от имени другого пользователя.
     response = reader_client.post(edit_url, data=form_data)
-    # Проверяем, что вернулась 404 ошибка.
     assert response.status_code == HTTPStatus.NOT_FOUND
-    # Обновляем объект комментария.
     comment.refresh_from_db()
-    # Проверяем, что текст остался тем же, что и был.
-    assert comment.text == 'Новый текст комментария'
+    assert comment.text == TEXT_COMMENT

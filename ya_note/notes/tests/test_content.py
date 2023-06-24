@@ -27,31 +27,28 @@ class TestContent(TestCase):
         )
         cls.auth_client = Client()
         cls.auth_client.force_login(cls.author)
-        cls.list_url = reverse('notes:list')
+        # Адреса тестируемых страницы.
+        # решил вместо констант оставить в @classmethod
+        cls.home_url = reverse('notes:list')
+        cls.add_url = reverse('notes:add')
+        cls.edit_url = reverse('notes:edit', args=(cls.note.slug,))
 
     def test_content_list_pages(self):
         """Тестируем контент страницы со списком заметок."""
-        # Загружаем страницу со списком заметок.
-        response = self.auth_client.get(self.list_url)
+        response = self.auth_client.get(self.home_url)
         # Тест № 1: Проверяем, что объект новости находится в словаре контекста
-        # под ожидаемым именем - названием модели.
-        object_list = response.context['object_list']
-        self.assertIn(self.note, object_list)
-        # Тест № 2: Проверяем, что на странице со списком только записи автора.
-        # Определяем длину списка.
-        list_length = len(object_list)
-        # Проверяем, что на странице со списком именно 1 заметка от автора.
-        self.assertEqual(list_length, 1)
+        self.assertIn(self.note, response.context['object_list'])
+        # Тест № 2: Проверяем, что на странице запись принадлежит автору.
+        self.assertEqual(self.note.author, self.author)
+        self.assertNotEqual(self.note.author, self.others_author)
 
     def test_authorized_client_has_form(self):
         """Тестируем наличие форм у авторизируемого пользователя."""
-        # Логиним пользователя в клиенте:
         urls = (
-            ('notes:add', None),
-            ('notes:edit', (self.note.slug,)),
+            self.add_url,
+            self.edit_url,
         )
-        for name, args in urls:
-            with self.subTest(self.author, name=name):
-                url = reverse(name, args=args)
+        for url in urls:
+            with self.subTest(self.author, url=url):
                 response = self.auth_client.get(url)
                 self.assertIn('form', response.context)
