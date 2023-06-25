@@ -3,6 +3,8 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from notes.models import Note
+from notes.forms import NoteForm
+
 
 User = get_user_model()
 
@@ -28,7 +30,10 @@ class TestContent(TestCase):
         cls.auth_client = Client()
         cls.auth_client.force_login(cls.author)
         # Адреса тестируемых страницы.
-        # решил вместо констант оставить в @classmethod
+        """
+        Решил вместо констант оставить в @classmethod
+        для компактности кода
+        """
         cls.home_url = reverse('notes:list')
         cls.add_url = reverse('notes:add')
         cls.edit_url = reverse('notes:edit', args=(cls.note.slug,))
@@ -52,3 +57,4 @@ class TestContent(TestCase):
             with self.subTest(self.author, url=url):
                 response = self.auth_client.get(url)
                 self.assertIn('form', response.context)
+                self.assertIsInstance(response.context['form'], NoteForm)

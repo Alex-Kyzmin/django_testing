@@ -4,6 +4,7 @@ import pytest
 from django.conf import settings
 
 from news.models import News
+from news.forms import CommentForm
 
 
 def test_home_pages_for_paginate_and_sorted(author_client, home_url):
@@ -21,7 +22,7 @@ def test_home_pages_for_paginate_and_sorted(author_client, home_url):
     response = author_client.get(home_url)
     object_list = response.context['object_list']
     # Тест на пагинацию:
-    news_count = len(object_list)
+    news_count = len(response.context['object_list'])
     assert news_count == settings.NEWS_COUNT_ON_HOME_PAGE
     # Тест на соритровку:
     all_dates = [news.date for news in object_list]
@@ -48,10 +49,5 @@ def test_anonymous_client_has_no_form(client, detail_url):
 def test_authorized_client_has_form(author_client, detail_url):
     """Тест детальной страницы на наличие форму у автора."""
     response = author_client.get(detail_url)
-    """
-    Очень хорошее замечание. Но пока не могу найти решения.
-    Пробовал через response.context['form'] == CommentForm[]
-    но не получилось. Посмотрел списки ассертов - ничего не нашел,
-    буду признателен за совет или подсказку.(и в юнитесте)
-    """
     assert 'form' in response.context
+    assert isinstance(response.context['form'], CommentForm)
