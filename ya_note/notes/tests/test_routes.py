@@ -20,7 +20,6 @@ class TestRoutes(TestCase):
         cls.reader = User.objects.create(username='Читатель')
         cls.reader_client = Client()
         cls.reader_client.force_login(cls.reader)
-
         # Создаём запись заметки.
         cls.note = Note.objects.create(
             author=cls.author,
