@@ -34,8 +34,6 @@ class TestCommentCreation(TestCase):
         cls.reader_client = Client()
         cls.reader_client.force_login(cls.reader)
         # Создаём тестовую запись в БД с заметкой
-        # это тестовая запись облегчающая дальнейшую логику кода
-        # прошу оставить мой вариант.
         cls.note = Note.objects.create(
             author=cls.author,
             title=NOTE_TITLE,
